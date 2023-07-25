@@ -1,7 +1,7 @@
 const express = require("express");
 const app = express();
 var cors = require("cors");
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
 const stripe = require("stripe")("sk_test_51NIFEMGrObk6yhznZxX7tNyXzuZEJd8vhrgTox7CUFx5CgiYoGCdnYTwujqQgMjxHlvm9jW7acUz090Y518Hx4cP00ZgTIHkzl"); // <-- change the key here
 
