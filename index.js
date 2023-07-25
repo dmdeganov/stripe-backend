@@ -16,12 +16,11 @@ const price = '1400';
   const paymentIntent = await stripe.paymentIntents.create({
     amount: price,
     currency: "usd",
-    // payment_method_types: ['card', 'paypal'],
+    // payment_method_types: ['card', 'paypal', 'apple_pay'],
     automatic_payment_methods: {
       enabled: true,
     },
   });
-  console.log(paymentIntent)
 
   res.send({
     clientSecret: paymentIntent.client_secret,
