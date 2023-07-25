@@ -12,7 +12,7 @@ app.use(express.json());
 // Create a Payment Intent (returns the client with a temporary secret)
 app.post("/create-payment-intent", async (req, res) => {
   // const { price } = req.body;
-const price = 14;
+const price = '1400';
   const paymentIntent = await stripe.paymentIntents.create({
     amount: price,
     currency: "usd",
@@ -21,6 +21,7 @@ const price = 14;
       enabled: true,
     },
   });
+  console.log(paymentIntent)
 
   res.send({
     clientSecret: paymentIntent.client_secret,
