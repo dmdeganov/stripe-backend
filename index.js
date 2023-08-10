@@ -9,46 +9,7 @@ const PORT = process.env.PORT || 3001;
 const stripe = require("stripe")("sk_test_51NIFEMGrObk6yhznZxX7tNyXzuZEJd8vhrgTox7CUFx5CgiYoGCdnYTwujqQgMjxHlvm9jW7acUz090Y518Hx4cP00ZgTIHkzl"); // <-- change the key here
 app.use(cors());
 app.use(express.static("public"));
-app.use(express.json());
 
-// Create a Payment Intent (returns the client with a temporary secret)
-app.post("/create-customer", async (req, res) => {
-  // const { price } = req.body;
-  const customer = await stripe.customers.create({
-    name: 'James'
-  })
-
-  res.send({
-    customerId: customer.id,
-  });
-});
-
-app.post('/create-subscription', async (req, res) => {
-  const customerId = req.body.customerId;
-  const priceId = req.body.priceId;
-
-  try {
-    // Create the subscription. Note we're expanding the Subscription's
-    // latest invoice and that invoice's payment_intent
-    // so we can pass it to the front end to confirm the payment
-    const subscription = await stripe.subscriptions.create({
-      customer: customerId,
-      items: [{
-        price: priceId,
-      }],
-      payment_behavior: 'default_incomplete',
-      payment_settings: { save_default_payment_method: 'on_subscription' },
-      expand: ['latest_invoice.payment_intent'],
-    });
-
-    res.send({
-      subscriptionId: subscription.id,
-      clientSecret: subscription.latest_invoice.payment_intent.client_secret,
-    });
-  } catch (error) {
-    return res.status(400).send({ error: { message: error.message } });
-  }
-});
 
 app.post(
   '/webhook',
@@ -72,6 +33,7 @@ app.post(
     }
     // Extract the object from the event.
     const dataObject = event.data.object;
+    console.log(event.type)
     // Handle the event
     // Review important events for Billing webhooks
     // https://stripe.com/docs/billing/webhooks
@@ -103,6 +65,76 @@ app.post(
     res.sendStatus(200);
   }
 );
+
+
+
+app.use(express.json());
+
+(async()=>{
+  const subscriptions = await stripe.subscriptions.list({
+    customer: 'cus_OQNJeeCvUTYlna',
+  });
+ const idOfSubscriptionToUpdate = subscriptions.data[0].id;
+ const subscriptionItem = subscriptions.data[0].items.data[0].id
+
+
+  const subscription = await stripe.subscriptions.update(
+    idOfSubscriptionToUpdate,
+    {
+      proration_behavior: 'always_invoice',
+      items: [
+        {
+          deleted: true,
+          id: subscriptionItem,
+        },
+        {
+          price: 'price_1NdWJAGrObk6yhznOhz82scs',
+        },
+      ],
+    }
+  );
+
+})();
+
+
+
+// Create a Payment Intent (returns the client with a temporary secret)
+app.post("/create-customer", async (req, res) => {
+  // const { price } = req.body;
+  const customer = await stripe.customers.create({
+    name: `Client-${Math.floor(new Date().getTime()/1000)}`
+  })
+
+  res.send({
+    customerId: customer.id,
+  });
+});
+
+app.post('/create-subscription', async (req, res) => {
+  const customerId = req.body.customerId;
+  const priceId = 'price_1NIo1WGrObk6yhznZL7LkQaL';
+
+  try {
+    const subscription = await stripe.subscriptions.create({
+      customer: customerId,
+      items: [{
+        price: priceId,
+      }],
+      payment_behavior: 'default_incomplete',
+      payment_settings: { save_default_payment_method: 'on_subscription' },
+      expand: ['latest_invoice.payment_intent'],
+    });
+    console.log(subscription.id)
+    res.send({
+      subscriptionId: subscription.id,
+      clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+    });
+  } catch (error) {
+    return res.status(400).send({ error: { message: error.message } });
+  }
+});
+
+
 
 app.listen(PORT, () => {
   console.log(`app is listening on port ~${PORT}`);
