@@ -19,7 +19,6 @@ app.post(
   "/webhook",
   bodyParser.raw({ type: "application/json" }),
   async (req, res) => {
-    // Retrieve the event by verifying the signature using the raw body and secret.
     let event;
 
     try {
@@ -36,74 +35,36 @@ app.post(
       return res.sendStatus(400);
     }
     // Extract the object from the event.
-    const dataObject = event.data.object;
-    console.log(event.type);
-    // Handle the event
-    // Review important events for Billing webhooks
     // https://stripe.com/docs/billing/webhooks
-    // Remove comment to see the various objects sent for this sample
-    switch (event.type) {
-      case "invoice.paid":
-        // Used to provision services after the trial has ended.
-        // The status of the invoice will show up as paid. Store the status in your
-        // database to reference when a user accesses your service to avoid hitting rate limits.
-        break;
-      case "invoice.payment_failed":
-        // If the payment fails or the customer does not have a valid payment method,
-        //  an invoice.payment_failed event is sent, the subscription becomes past_due.
-        // Use this webhook to notify your user that their payment has
-        // failed and to retrieve new card details.
-        break;
-      case "customer.subscription.deleted":
-        if (event.request != null) {
-          // handle a subscription canceled by your request
-          // from above.
-        } else {
-          // handle subscription canceled automatically based
-          // upon your subscription settings.
-        }
-        break;
-      default:
-      // Unexpected event type
+        const dataObject = event.data.object;
+    console.log(event.type);
+
+    if (event.type === "setup_intent.succeeded") {
+      console.log(event)
+      const customerId = event.data.object.customer;
+      const paymentMethodId = event.data.object.payment_method;
+      console.log(customerId, paymentMethodId)
+
+      await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: customerId,
+      });
+      const updatedCustomer = await stripe.customers.update(customerId,
+        {
+          invoice_settings: {
+            default_payment_method: paymentMethodId
+          }
+        })
+      // const customer = await stripe.customers.retrieve(customerId, {expand: ['invoice_settings.default_payment_method']});
+      // console.log(customer);
     }
+
     res.sendStatus(200);
   },
 );
 
 app.use(express.json());
 
-// (async () => {
-//   const customerId = "cus_OQOf7VMmIrdeSP";
-//   const customer = await stripe.customers.retrieve(
-//     customerId
-//   );
-//   console.log(customer)
-// })();
-
-(async () => {
-  const setupIntentId = "seti_1NdrFZGrObk6yhznUjDQo0bo";
-  const customerId = "cus_OQigBZUKzsJLa2";
-  // const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
-  // console.log(setupIntent);
-      const paymentMethodId = 'pm_1NdrFvGrObk6yhznxGR4oxfd';
-     // await stripe.setupIntents.confirm(setupIntentId);
-
-  // const attachedPaymentMethod = await stripe.paymentMethods.attach(
-  //   paymentMethodId,
-  //   {customer: customerId}
-  // );
-const updatedCustomer = await stripe.customers.update(customerId,
-  {
-    invoice_settings: {
-      default_payment_method: paymentMethodId
-    }
-  })
-  console.log(updatedCustomer)
-  // console.log(attachedPaymentMethod)
-
-  // const customer = await stripe.customers.retrieve(customerId, {expand: ['invoice_settings.default_payment_method']});
-  // console.log(customer);
-})();
+(async () => {})();
 
 //////////////////////////// the way to upgrade subscription manually
 // (async()=>{
@@ -133,23 +94,22 @@ const updatedCustomer = await stripe.customers.update(customerId,
 // })();
 /////////////////////////////////////////////////////////////////
 
-app.post("/create-customer", async (req, res) => {
-  // const { price } = req.body;
+app.post("/create-customer-and-setup-intent", async (req, res) => {
   const customer = await stripe.customers.create({
-    name: `Client-${Math.floor(new Date().getTime() / 1000)}`,
+    name: req.body.name,
   });
-
+  const setupIntent = await stripe.setupIntents.create({
+    customer: customer.id,
+  });
   res.send({
-    customerId: customer.id,
+    customer_id: customer.id,
+    client_secret: setupIntent.client_secret,
   });
 });
 
-app.post("/create-subscription", async (req, res) => {
+app.post("/buy-subscription", async (req, res) => {
   const customerId = req.body.customerId;
-
-  ////////////////////////////////////////
-  //tried to create subscriptionSchedule that automatically creates subscription itself but failed to create payment intent for it
-
+  console.log({})
   const subscriptionSchedule = await stripe.subscriptionSchedules.create({
     customer: customerId,
     start_date: "now",
@@ -179,107 +139,11 @@ app.post("/create-subscription", async (req, res) => {
       },
     ],
   });
-
-  // const paymentIntent = subscriptionSchedule.subscription.latest_invoice.payment_intent;
-  // console.log(paymentIntent) //it's null =(
-
   const latestInvoiceId = subscriptionSchedule.subscription.latest_invoice.id;
   const invoice = await stripe.invoices.pay(latestInvoiceId);
-  console.log(invoice);
-  //падает ошибка мол у юзера нет никакого метода оплаты
+  res.sendStatus(200);
 
-  // // getting subscription object
-  // const subscription = await stripe.subscriptions.retrieve(
-  //   relatedSubscriptionId,
-  // );
-  // console.log(subscription)
-  // try to get payment intent from updated subscription
-  // const updatedSubscription = await stripe.subscriptions.update(
-  //   relatedSubscriptionId,
-  //   {
-  //     payment_behavior: "default_incomplete",
-  //     payment_settings: { save_default_payment_method: "on_subscription" },
-  //     expand: ["latest_invoice.payment_intent"],
-  //   },
-  // );
-  // console.log(updatedSubscription.latest_invoice?.payment_intent?.client_secret)
-
-  /////////////////////////////////////////////////////////////////
-  //creating subscription and send payment intent to client side
-  //   try {
-  //     const subscription = await stripe.subscriptions.create({
-  //       customer: customerId,
-  //       items: [
-  //         {
-  //           price: weekPriceId,
-  //         },
-  //       ],
-  //       payment_behavior: "default_incomplete",
-  //       payment_settings: { save_default_payment_method: "on_subscription" },
-  //       expand: ["latest_invoice.payment_intent"],
-  //     });
-  //
-  //     res.send({
-  //       subscriptionId: subscription.id,
-  //       clientSecret: subscription.latest_invoice.payment_intent.client_secret,
-  //     });
-  //
-  //     console.log("before subscriptionSchedule");
-  //   } catch (error) {
-  //     return res.status(400).send({ error: { message: error.message } });
-  //   }
-  ///////////////////////////////////////
 });
-
-app.post("/create-setup-intent", async (req, res) => {
-  const customerId = req.body.customerId;
-
-  const setupIntent = await stripe.setupIntents.create({
-    customer: customerId,
-    // attach_to_self: true,
-  });
-  console.log(setupIntent);
-  res.send({
-    client_secret: setupIntent.client_secret,
-  });
-});
-
-//////////////////////// tried to add schedule to automaticly upgrade already existing subscription
-// (async () => {
-//   // const subscriptionSchedule = await stripe.subscriptionSchedules.create({
-//   //   from_subscription: "sub_1NdZPnGrObk6yhzn55JgTbxK",
-//   // });
-//   await stripe.subscriptionSchedules.update(
-//     "sub_sched_1NdZTIGrObk6yhzn4Qg11tEm",
-//     {
-//       end_behavior: "release",
-//       start_date: 'now',
-//       phases: [
-//         {
-//           items: [
-//             {
-//               price: weekPriceId,
-//               quantity: 1,
-//             },
-//           ],
-//           iterations: 1,
-//         },
-//         {
-//           // start_date: Math.floor((Date.now() + 7 * 24 * 60 * 60 * 1000)/1000),
-//           items: [
-//             {
-//               price: monthPriceId,
-//               quantity: 1,
-//             },
-//           ],
-//         },
-//       ],
-//     },
-//   );
-//   console.log(subscriptionSchedule);
-// })();
-
-///////////////////create setup intent
 
 app.listen(PORT, () => {
   console.log(`app is listening on port ~${PORT}`);
