@@ -4,13 +4,13 @@ var cors = require("cors");
 const bodyParser = require("body-parser");
 require("dotenv").config();
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5000;
 
-const weekPriceId = "price_1NIo1WGrObk6yhznZL7LkQaL"; // можно достать из дошборда руками, можно запросить по апи https://stripe.com/docs/api/products/list
-const monthPriceId = "price_1NdWJAGrObk6yhznOhz82scs";
+const weekPriceId = "price_1OJyCjFjVxX7cuN3eot7xg2e"; // можно достать из дошборда руками, можно запросить по апи https://stripe.com/docs/api/products/list
+const monthPriceId = "price_1OJyD2FjVxX7cuN3U2Xi81Hn";
 
 const stripe = require("stripe")(
-  "sk_test_51NIFEMGrObk6yhznZxX7tNyXzuZEJd8vhrgTox7CUFx5CgiYoGCdnYTwujqQgMjxHlvm9jW7acUz090Y518Hx4cP00ZgTIHkzl",
+  "sk_test_51KpuJFFjVxX7cuN3DnctPbGQUaePoq0i5aGQtgmZCMyajXe8YU88zdhdxu58wMYzu5Gd5sv3ohocFLRZJPgGuV3F00j3YchjkY",
 ); // <-- change the key here
 app.use(cors());
 app.use(express.static("public"));
@@ -36,24 +36,23 @@ app.post(
     }
     // Extract the object from the event.
     // https://stripe.com/docs/billing/webhooks
-        const dataObject = event.data.object;
+    const dataObject = event.data.object;
     console.log(event.type);
 
     if (event.type === "setup_intent.succeeded") {
-      console.log(event)
+      console.log(event);
       const customerId = event.data.object.customer;
       const paymentMethodId = event.data.object.payment_method;
-      console.log(customerId, paymentMethodId)
+      console.log(customerId, paymentMethodId);
 
       await stripe.paymentMethods.attach(paymentMethodId, {
         customer: customerId,
       });
-      const updatedCustomer = await stripe.customers.update(customerId,
-        {
-          invoice_settings: {
-            default_payment_method: paymentMethodId
-          }
-        })
+      const updatedCustomer = await stripe.customers.update(customerId, {
+        invoice_settings: {
+          default_payment_method: paymentMethodId,
+        },
+      });
       // const customer = await stripe.customers.retrieve(customerId, {expand: ['invoice_settings.default_payment_method']});
       // console.log(customer);
     }
@@ -94,7 +93,7 @@ app.use(express.json());
 // })();
 /////////////////////////////////////////////////////////////////
 
-app.post("/create-customer-and-setup-intent", async (req, res) => {
+app.post("/customer_and_intent", async (req, res) => {
   const customer = await stripe.customers.create({
     name: req.body.name,
   });
@@ -102,47 +101,78 @@ app.post("/create-customer-and-setup-intent", async (req, res) => {
     customer: customer.id,
   });
   res.send({
-    customer_id: customer.id,
-    client_secret: setupIntent.client_secret,
+    customerId: customer.id,
+    clientSecret: setupIntent.client_secret,
   });
 });
 
-app.post("/buy-subscription", async (req, res) => {
+app.post("/buy_subscription", async (req, res) => {
   const customerId = req.body.customerId;
-  console.log({})
-  const subscriptionSchedule = await stripe.subscriptionSchedules.create({
-    customer: customerId,
-    start_date: "now",
-    end_behavior: "release",
-    expand: ["subscription.latest_invoice.payment_intent"],
-    default_settings: {
-      collection_method: "charge_automatically",
-      // payment_behavior: "default_incomplete",
-    },
-    phases: [
-      {
-        items: [
-          {
-            price: weekPriceId,
-            quantity: 1,
-          },
-        ],
-        iterations: 1,
+  try {
+    const subscriptionSchedule = await stripe.subscriptionSchedules.create({
+      customer: customerId,
+      start_date: "now",
+      end_behavior: "release",
+      expand: ["subscription.latest_invoice.payment_intent"],
+      default_settings: {
+        collection_method: "charge_automatically",
+        // payment_behavior: "default_incomplete",
       },
-      {
-        items: [
-          {
-            price: monthPriceId,
-            quantity: 1,
-          },
-        ],
-      },
-    ],
-  });
-  const latestInvoiceId = subscriptionSchedule.subscription.latest_invoice.id;
-  const invoice = await stripe.invoices.pay(latestInvoiceId);
-  res.sendStatus(200);
+      phases: [
+        {
+          items: [
+            {
+              price: weekPriceId,
+              quantity: 1,
+            },
+          ],
+          iterations: 1,
+        },
+        {
+          items: [
+            {
+              price: monthPriceId,
+              quantity: 1,
+            },
+          ],
+        },
+      ],
+    });
+    const latestInvoiceId = subscriptionSchedule.subscription.latest_invoice.id;
+    const invoice = await stripe.invoices.pay(latestInvoiceId);
+  } catch (err) {
+    console.log(err);
+    res.send({ error: true });
+    return;
+  }
 
+  res.send({ success: true });
+});
+
+app.get("/", async (req, res) => {
+  // const upcomingInvoice = await stripe.invoices.retrieveUpcoming({
+  //   customer: "cus_PBw26Gv7cDxKnP",
+  // });
+
+  // const invoice = await stripe.invoices.retrieve('in_1ONYLjFjVxX7cuN3YU1yf5Ay');
+  //
+  // const invoice = await stripe.invoices.update("in_1ONYLjFjVxX7cuN3YU1yf5Ay", {
+  //   auto_advance: false,
+  // });
+
+  const upcomingInvoice = await stripe.invoices.retrieveUpcoming({
+    customer: 'cus_PBwDiSmLGaNNiY',
+  });
+
+  res.send(upcomingInvoice);
+});
+
+app.get("/cancel-subscription", async (req, res) => {
+
+  const subscription = await stripe.subscriptions.cancel(
+    'sub_1ONYLjFjVxX7cuN32RO3co5g'
+  );
+  res.send(subscription)
 });
 
 app.listen(PORT, () => {
